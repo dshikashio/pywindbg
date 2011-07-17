@@ -1,0 +1,19 @@
+Introduction
+============
+
+Pywindbg is a Windbg extension that embeds a Python interpreter into the Windbg
+console.
+
+Currently does not interact with the debugging session.  Requires dbgeng
+bindings available separately.
+
+
+
+TODO
+* Add build files
+* Handle include and library paths gracefully
+** Windbg SDK
+** Python
+
+
+

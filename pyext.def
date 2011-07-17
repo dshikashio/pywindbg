@@ -1,0 +1,11 @@
+EXPORTS
+
+    DebugExtensionInitialize
+    DebugExtensionUninitialize
+
+	help
+	pyeval
+	pyexec
+	python
+	
+    
