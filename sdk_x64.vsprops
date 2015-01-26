@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="Windows-1252"?>
+<VisualStudioPropertySheet
+	ProjectType="Visual C++"
+	Version="8.00"
+	Name="sdk_x64"
+	>
+	<Tool
+		Name="VCCLCompilerTool"
+		AdditionalIncludeDirectories="&quot;C:\Program Files (x86)\Windows Kits\8.1\Debuggers\inc&quot;;&quot;C:\Program Files (x86)\Windows Kits\8.1\Include\shared&quot;;&quot;C:\Program Files (x86)\Windows Kits\8.1\Include\um&quot;"
+	/>
+	<Tool
+		Name="VCLinkerTool"
+		AdditionalDependencies="dbgeng.lib"
+		AdditionalLibraryDirectories="&quot;C:\Program Files (x86)\Windows Kits\8.1\Debuggers\lib\x64&quot;"
+	/>
+</VisualStudioPropertySheet>

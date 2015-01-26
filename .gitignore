@@ -1,0 +1,5 @@
+*.suo
+*.ncb
+*.user
+Win32
+x64
