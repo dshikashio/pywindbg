@@ -3,10 +3,11 @@
 //
 // Nice to Haves
 // - pydbgeng and pywindbg available by default
-// - ability to actually unload !pyext.unload and recompile...
 //
 // Might be useful
 // - Wrap the "old" apis as python calls
+
+#define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include <structmember.h>
 #include "pyembed.h"
@@ -35,6 +36,9 @@ IoBridge_write(IoBridgeObject *self, PyObject *args)
     char *data = NULL;
 
     if (!PyArg_ParseTuple(args, "s", &data))
+        return NULL;
+
+    if (data == NULL)
         return NULL;
 
     if (gPyDebugControl) {
@@ -129,8 +133,7 @@ static PyMemberDef IoBridge_members[] = {
 };
 
 static PyTypeObject IoBridgeType = {
-    PyObject_HEAD_INIT(NULL)
-    0,                         /*ob_size*/
+    PyVarObject_HEAD_INIT(NULL, 0)
     "extio.IoBridge",          /*tp_name*/
     sizeof(IoBridgeObject),    /*tp_basicsize*/
     0,                         /*tp_itemsize*/
@@ -138,7 +141,7 @@ static PyTypeObject IoBridgeType = {
     0,                         /*tp_print*/
     0,                         /*tp_getattr*/
     0,                         /*tp_setattr*/
-    0,                         /*tp_compare*/
+    0,                         /*tp_reserved*/
     0,                         /*tp_repr*/
     0,                         /*tp_as_number*/
     0,                         /*tp_as_sequence*/
@@ -178,22 +181,42 @@ ExtIo_ExitNop(PyObject *ignore, PyObject *arg)
 
 static PyMethodDef  ExtIoMethods[] = {
     {"exit_nop", (PyCFunction)ExtIo_ExitNop, METH_VARARGS, 
-    "Type exit() or quit() to return back to Windbg."}
+    "Type exit() or quit() to return back to Windbg."},
+    {NULL, NULL, 0, NULL}
 };
 
-HRESULT initextio(void)
+static struct PyModuleDef extiomodule =
+{
+    PyModuleDef_HEAD_INIT,
+    "extio",
+    "extio module",
+    -1,
+    ExtIoMethods,
+    NULL, NULL, NULL, NULL
+};
+
+//HRESULT
+PyMODINIT_FUNC PyInit_extio(void)
 {
     PyObject *m;
 
     IoBridgeType.tp_new = PyType_GenericNew;
     if (PyType_Ready(&IoBridgeType) < 0)
-        return E_FAIL;
+        return NULL;
 
-    m = Py_InitModule("extio", ExtIoMethods);
+    m = PyModule_Create(&extiomodule);
+    if (m == NULL) {
+        return NULL;
+    }
+
     Py_INCREF(&IoBridgeType);
-    PyModule_AddObject(m, "IoBridge", (PyObject *)&IoBridgeType);
+    if (PyModule_AddObject(m, "IoBridge", (PyObject*)&IoBridgeType) != 0) {
+        Py_DECREF(&IoBridgeType);
+        Py_DECREF(m);
+        return NULL;
+    }
 
-    return S_OK;
+    return m;
 }
 
 HRESULT python_init(void)
@@ -205,12 +228,16 @@ HRESULT python_init(void)
     PyObject *ExitNop = NULL;
     PyObject *BuiltIns = NULL;
 
-    PyEval_InitThreads();
-	Py_Initialize();
+    if (PyImport_AppendInittab("extio", PyInit_extio) == -1)
+        return E_FAIL;
 
-    if ((hr = initextio()) != S_OK)
-        return hr;
+	Py_Initialize();
+    //PyEval_InitThreads();
+
     hr = E_FAIL;
+
+    if (PyRun_SimpleString("import sys") != 0)
+        return E_FAIL;
 
     module = PyImport_ImportModule("extio");
     if (module == NULL)
@@ -224,7 +251,7 @@ HRESULT python_init(void)
     if (IoBridge == NULL)
         goto fail;
 
-    OBInst = (IoBridgeObject *)PyObject_CallObject(IoBridge, NULL);
+    OBInst = (IoBridgeObject *)PyObject_CallObject((PyObject *)&IoBridgeType, NULL);
     if (OBInst == NULL)
         goto fail;
 
@@ -265,9 +292,6 @@ void python_fini(void)
 HRESULT CALLBACK
 pyeval(IN IDebugClient *Client, IN OPTIONAL PCSTR args)
 {
-    PyObject *m;
-    PyObject *d;
-    PyObject *v = NULL;
     PSTR cmd = NULL;
     size_t cmdlen = 0;
 
@@ -275,24 +299,20 @@ pyeval(IN IDebugClient *Client, IN OPTIONAL PCSTR args)
 
     cmdlen = lstrlenA(args + 2);
     cmd = (PSTR)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, cmdlen);
+    if (cmd == NULL)
+        goto done;
+
     lstrcpyA(cmd, args);
     lstrcatA(cmd, "\n");
 
-    if ((m = PyImport_AddModule("__main__")) == NULL)
-        goto done;
-
-    d = PyModule_GetDict(m);
-    if ((v = PyRun_StringFlags(cmd, Py_single_input, d, d, NULL)) == NULL) {
+    if (PyRun_SimpleString(cmd) == -1) {
         PyErr_Print();
         goto done;
     }
-    if (Py_FlushLine())
-        PyErr_Clear();
 
 done:
-    gDebugControl->Output(DEBUG_OUTPUT_NORMAL, "\n");
+    gPyDebugControl->Output(DEBUG_OUTPUT_NORMAL, "\n");
     if (cmd) HeapFree(GetProcessHeap(), 0, cmd);
-    Py_XDECREF(v);
     LEAVE_CALLBACK();
     return S_OK;
 }
@@ -300,15 +320,15 @@ done:
 HRESULT CALLBACK
 pyexec(IN IDebugClient *Client, IN OPTIONAL PCSTR args)
 {
-    PyObject *file = NULL;
+    FILE* file = NULL;
     PyObject *m;
     PyObject *d;
-    PyObject *v = NULL;
+    PyObject* v = NULL;
 
     ENTER_CALLBACK(Client);
     Client->SetOutputWidth(100);
 
-    file = PyFile_FromString((char *)args, "r");
+    file = fopen(args, "rb");
     if (file == NULL) {
         gDebugControl->Output(DEBUG_OUTPUT_ERROR, "Error opening '%s'", args);
         goto done;
@@ -318,15 +338,19 @@ pyexec(IN IDebugClient *Client, IN OPTIONAL PCSTR args)
         goto done;
 
     d = PyModule_GetDict(m);
-    if ((v = PyRun_File(PyFile_AsFile(file), args, Py_file_input, d, d)) == NULL) {
+
+    if ((v = PyRun_File(file, args, Py_file_input, d, d)) == NULL) {
         PyErr_Print();
         goto done;
     }
-    if (Py_FlushLine())
-        PyErr_Clear();
+
 done:
+    if (file != NULL)
+    {
+        fclose(file);
+    }
     Py_XDECREF(v);
-    Py_XDECREF(file);
+    // Do we need to decref d or m?
     LEAVE_CALLBACK();
     return S_OK;
 }
@@ -337,10 +361,11 @@ python(IN IDebugClient *Client, IN OPTIONAL PCSTR args)
 {
     PyObject *m;
     PyObject *d;
-    PyObject *v = NULL;
+    PyObject *v1 = NULL;
+    PyObject* v2 = NULL;
     ULONG Mask;
 
-    char *cmds[] = {
+    const char *cmds[] = {
         "import code",
 
         "code.interact(banner=\""
@@ -359,24 +384,22 @@ python(IN IDebugClient *Client, IN OPTIONAL PCSTR args)
         goto done;
 
     d = PyModule_GetDict(m);
-    if ((v = PyRun_StringFlags(cmds[0], Py_single_input, d, d, NULL)) == NULL) {
+    if ((v1 = PyRun_StringFlags(cmds[0], Py_single_input, d, d, NULL)) == NULL) {
         PyErr_Print();
         goto done;
     }
-    if ((v = PyRun_StringFlags(cmds[1], Py_single_input, d, d, NULL)) == NULL) {
+    if ((v2 = PyRun_StringFlags(cmds[1], Py_single_input, d, d, NULL)) == NULL) {
         PyErr_Print();
         goto done;
     }
-    if (Py_FlushLine())
-        PyErr_Clear();
-    
+
 done:
     Mask |= DEBUG_OUTPUT_PROMPT;
     Client->SetOutputMask(Mask);
 
     gDebugControl->Output(DEBUG_OUTPUT_NORMAL, "Leaving Python\n");
-    Py_XDECREF(v);
+    Py_XDECREF(v1);
+    Py_XDECREF(v2);
     LEAVE_CALLBACK();
     return S_OK;
 }
-

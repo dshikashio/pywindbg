@@ -34,16 +34,18 @@ DebugExtensionInitialize(OUT PULONG Version, OUT PULONG Flags)
     *Version = DEBUG_EXTENSION_VERSION(VER_MAJ, VER_MIN);
     *Flags = 0;
 
-    if ((hr = DebugCreate(__uuidof(IDebugClient), (void **)&gDebugClient)) != S_OK)
+    if ((hr = DebugCreate(__uuidof(IDebugClient), (void**)&gDebugClient)) != S_OK)
         return hr;
 
     if ((hr = gDebugClient->QueryInterface(__uuidof(IDebugControl),
-                    (void **)&gPyDebugControl)) != S_OK)
+        (void**)&gPyDebugControl)) != S_OK)
         goto fail;
 
     if (python_init() != S_OK)
+    {
+        hr = E_FAIL;
         goto fail;
-
+    }
     return S_OK;
 
 fail:
@@ -76,7 +78,7 @@ DebugExtensionUninitialize(void)
 HRESULT CALLBACK
 help(IN IDebugClient *Client, IN OPTIONAL PCSTR args)
 {
-    char *help_msg = 
+    char help_msg[] = 
         "\n PyExt - Windbg Python Extension\n"
         "\tpyeval [expr]\n"
         "\t\t- Evaluate an expression\n"
