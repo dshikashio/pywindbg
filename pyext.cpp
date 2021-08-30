@@ -82,9 +82,9 @@ help(IN IDebugClient *Client, IN OPTIONAL PCSTR args)
 {
     char help_msg[] = 
         "\n PyExt - Windbg Python Extension\n"
-        "\tpyeval [expr]\n"
+        "\teval [expr]\n"
         "\t\t- Evaluate an expression\n"
-        "\tpyexec [filename]\n"
+        "\texec [filename]\n"
         "\t\t- Run a script\n"
         "\tpython\n"
         "\t\t- Interactive Python interpreter\n"

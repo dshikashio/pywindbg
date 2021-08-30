@@ -4,8 +4,8 @@ EXPORTS
     DebugExtensionUninitialize
 
 	help
-	pyeval
-	pyexec
+	eval
+	exec
 	python
 	
     

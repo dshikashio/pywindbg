@@ -303,7 +303,7 @@ void python_fini(void)
 }
 
 HRESULT CALLBACK
-pyeval(IN IDebugClient *Client, IN OPTIONAL PCSTR args)
+eval(IN IDebugClient *Client, IN OPTIONAL PCSTR args)
 {
     PSTR cmd = NULL;
     size_t cmdlen = 0;
@@ -335,7 +335,7 @@ done:
 }
 
 HRESULT CALLBACK
-pyexec(IN IDebugClient *Client, IN OPTIONAL PCSTR args)
+exec(IN IDebugClient *Client, IN OPTIONAL PCSTR args)
 {
     FILE* file = NULL;
     PyObject *m;
