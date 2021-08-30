@@ -82,7 +82,9 @@ IoBridge_readline(IoBridgeObject *self, PyObject *args)
     PyObject *ret = NULL;
 
 #define BUF_SIZE 0x4000
+    Py_BEGIN_ALLOW_THREADS
     buf = (PSTR)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, BUF_SIZE);
+    Py_END_ALLOW_THREADS
     if (buf != NULL) {
         if (gPyDebugControl) {
             Py_BEGIN_ALLOW_THREADS
@@ -112,8 +114,16 @@ IoBridge_readline(IoBridgeObject *self, PyObject *args)
     // Something went wrong, return EOF
     ret = Py_BuildValue("s", "");
 done:
+    Py_BEGIN_ALLOW_THREADS
     if (buf) HeapFree(GetProcessHeap(), 0, buf);
+    Py_END_ALLOW_THREADS
     return ret;
+}
+
+static PyObject*
+IoBridge_flush(IoBridgeObject* self, PyObject* args)
+{
+    Py_RETURN_NONE;
 }
 
 static PyMethodDef IoBridge_methods[] = {
@@ -122,6 +132,9 @@ static PyMethodDef IoBridge_methods[] = {
     },
     {"readline", (PyCFunction)IoBridge_readline, METH_VARARGS,
     "Read extension input"
+    },
+    {"flush", (PyCFunction)IoBridge_flush, METH_VARARGS,
+    "Flush output"
     },
     {NULL}
 };
@@ -297,8 +310,10 @@ pyeval(IN IDebugClient *Client, IN OPTIONAL PCSTR args)
 
     ENTER_CALLBACK(Client);
 
+    Py_BEGIN_ALLOW_THREADS
     cmdlen = lstrlenA(args + 2);
     cmd = (PSTR)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, cmdlen);
+    Py_END_ALLOW_THREADS
     if (cmd == NULL)
         goto done;
 
@@ -311,8 +326,10 @@ pyeval(IN IDebugClient *Client, IN OPTIONAL PCSTR args)
     }
 
 done:
+    Py_BEGIN_ALLOW_THREADS
     gPyDebugControl->Output(DEBUG_OUTPUT_NORMAL, "\n");
     if (cmd) HeapFree(GetProcessHeap(), 0, cmd);
+    Py_END_ALLOW_THREADS
     LEAVE_CALLBACK();
     return S_OK;
 }
@@ -326,14 +343,19 @@ pyexec(IN IDebugClient *Client, IN OPTIONAL PCSTR args)
     PyObject* v = NULL;
 
     ENTER_CALLBACK(Client);
-    Client->SetOutputWidth(100);
+    //Client->SetOutputWidth(100);
 
+    Py_BEGIN_ALLOW_THREADS
     file = fopen(args, "rb");
+    Py_END_ALLOW_THREADS
+
     if (file == NULL) {
-        gDebugControl->Output(DEBUG_OUTPUT_ERROR, "Error opening '%s'", args);
+        Py_BEGIN_ALLOW_THREADS
+        gPyDebugControl->Output(DEBUG_OUTPUT_ERROR, "Error opening '%s'", args);
+        Py_END_ALLOW_THREADS
         goto done;
     }
-
+    
     if ((m = PyImport_AddModule("__main__")) == NULL)
         goto done;
 
@@ -345,12 +367,14 @@ pyexec(IN IDebugClient *Client, IN OPTIONAL PCSTR args)
     }
 
 done:
+    Py_BEGIN_ALLOW_THREADS
     if (file != NULL)
     {
         fclose(file);
     }
+    Py_END_ALLOW_THREADS
     Py_XDECREF(v);
-    // Do we need to decref d or m?
+    // m and d are borrowed references
     LEAVE_CALLBACK();
     return S_OK;
 }
@@ -376,9 +400,11 @@ python(IN IDebugClient *Client, IN OPTIONAL PCSTR args)
 
     ENTER_CALLBACK(Client);
 
+    Py_BEGIN_ALLOW_THREADS
     Client->GetOutputMask(&Mask);
     Mask &= ~DEBUG_OUTPUT_PROMPT;
     Client->SetOutputMask(Mask);
+    Py_END_ALLOW_THREADS
 
     if ((m = PyImport_AddModule("__main__")) == NULL)
         goto done;
@@ -394,12 +420,14 @@ python(IN IDebugClient *Client, IN OPTIONAL PCSTR args)
     }
 
 done:
+    Py_BEGIN_ALLOW_THREADS
     Mask |= DEBUG_OUTPUT_PROMPT;
     Client->SetOutputMask(Mask);
-
-    gDebugControl->Output(DEBUG_OUTPUT_NORMAL, "Leaving Python\n");
+    gPyDebugControl->Output(DEBUG_OUTPUT_NORMAL, "Leaving Python\n");
+    Py_END_ALLOW_THREADS
     Py_XDECREF(v1);
     Py_XDECREF(v2);
+    // m and d are borrowed references
     LEAVE_CALLBACK();
     return S_OK;
 }

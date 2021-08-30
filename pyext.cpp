@@ -63,6 +63,8 @@ fail:
 void CALLBACK
 DebugExtensionUninitialize(void)
 {
+    python_fini();
+
     if (gPyDebugControl) {
         gPyDebugControl->Release();
         gPyDebugControl = NULL;
@@ -71,7 +73,7 @@ DebugExtensionUninitialize(void)
         gDebugClient->Release();
         gDebugClient = NULL;
     }
-    python_fini();
+
     return;
 }
 
